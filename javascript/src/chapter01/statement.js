@@ -1,27 +1,39 @@
-import invoice from '~/test/invoice.json';
-import plays from '~/test/plays.json';
+import invoice from './invoice.json';
+import plays from './plays.json';
+// const invoice = require('./invoice.json');
+// const plays = require('./plays.json');
 
-function getAmount(_play, _performance) {
-  let amount = 0;
-
-  switch (_play.type) {
-    case "tragedy":
-      amount = 40000;
-      if (_performance.audience > 30) {
-        amount += 1000 * (_performance.audience - 30);
-      }
-      break;
-    case "comedy":
-      amount = 30000;
-      if (_performance.audience > 20) { // 관객이 20명 이상이면 1000 + 500 * 초과분
-        amount += 10000 + 500 * (_performance.audience - 20);
-      }
-      amount += 300 * _performance.audience;
-      break;
-    default:
-      throw new Error(`알 수 없는 장르: ${_play.type}`);
+class CalculateAmount
+{
+  constructor(_audience) {
+    this.audience = _audience;
   }
-  return amount;
+
+}
+
+class CalculateComedyAmount extends CalculateAmount
+{
+  get amount () {
+    return 30000 + 300 * this.audience + (this.audience > 20 ? 10000 + 500 * (this.audience - 20) : 0) ;
+  }
+}
+
+class CalculateTragedyAmount extends CalculateAmount
+{
+  get amount () {
+    return 40000 + (this.audience >30 ? 1000 * (this.audience - 30) : 0) ;
+  }
+}
+
+function getAmount(_playType, _audience) {
+  switch (_playType) {
+    case "tragedy":
+      return new CalculateTragedyAmount(_audience).amount;
+    case "comedy":
+      return new CalculateComedyAmount(_audience).amount;
+    default:
+      throw new Error(`알 수 없는 장르: ${_playType}`);
+  }
 }
 
 function commonVolumeCredit(audience) {
@@ -32,31 +44,52 @@ function additionalVolumeCreditForComedy(audience) {
   return Math.floor(audience / 5);
 }
 
-function getVolumeCredit(play, audience) {
-  return ("comedy" === play.type)
+function getVolumeCredit(_playType, audience) {
+  return ("comedy" === _playType)
     ? commonVolumeCredit(audience) + additionalVolumeCreditForComedy(audience)
     : commonVolumeCredit(audience)
 }
 
-function statement () {
-  let totalAmount = 0;
-  let volumeCredits = 0;
-  let result = `청구 내역 (고객명: ${invoice.customer})\n`;
-  const format = new Intl.NumberFormat("en-US",
-    { style: "currency", currency: "USD",
-      minimumFractionDigits: 2 }).format;
-
-  for (let performance of invoice.performances) {
-    const play = plays[performance.playID];
-    let amount = 0;
-    amount = getAmount(play, performance);
-    volumeCredits = getVolumeCredit(play, performance.audience);
-    // print line for this order
-    result += ` ${play.name}: ${format(amount/100)} (${performance.audience}석)\n`;
-    totalAmount += amount;
+  function USDFormat(number){
+    return new Intl.NumberFormat("en-US",
+      {
+        style: "currency", currency: "USD",
+        minimumFractionDigits: 2
+      }).format(number);
   }
-  result += `총액 ${format(totalAmount/100)}\n`;
-  result += `적립 포인트 ${volumeCredits}점\n`;
-  return result;
+
+function createResultStatement(_customer, _totalAmount, _volumeCredits) {
+  return`청구 내역 (고객명: ${_customer})
+${getPerformanceDescription()}
+총액 ${USDFormat(_totalAmount/100)}
+적립 포인트 ${_volumeCredits}점
+`;
 }
 
+function getPerformanceDescription() {
+  let performanceDescription = '';
+  for (let performance of invoice.performances) {
+    const amount = getAmount(plays[performance.playID].type, performance.audience);
+    performanceDescription += ` ${plays[performance.playID].name}: ${USDFormat(amount/100)} (${performance.audience}석)\n`;
+  }
+
+  return performanceDescription;
+}
+
+function statement () {
+  let totalAmount = 0;
+
+  for (let performance of invoice.performances) {
+    const amount = getAmount(plays[performance.playID].type, performance.audience);
+    totalAmount += amount;
+  }
+
+  let volumeCredits = 0;
+  for (let performance of invoice.performances) {
+    volumeCredits += getVolumeCredit(plays[performance.playID].type, performance.audience);
+  }
+
+  return createResultStatement(invoice.customer, totalAmount, volumeCredits);
+}
+
+console.log(statement ());
